@@ -228,7 +228,9 @@
     center: { lat: -27.6456, lon: -48.6697, name: 'Palhoça, SC' },
     radiusKm: 3,
     results: [],
+    filteredResults: [],
     selectedId: null,
+    resultsExpanded: false,
     leads: [],
     isScanning: false,
     activePitchBiz: null,
@@ -246,6 +248,14 @@
       crm: document.getElementById('view-crm')
     },
     crmBadge: document.getElementById('crm-badge'),
+    sidebar: document.getElementById('radar-sidebar'),
+    summaryCity: document.getElementById('summary-city'),
+    summaryMeta: document.getElementById('summary-meta'),
+    btnExpandSearch: document.getElementById('btn-expand-search'),
+    btnExpandSearchArea: document.getElementById('btn-expand-search-area'),
+    btnCollapseSearch: document.getElementById('btn-collapse-search'),
+    resultsHandle: document.getElementById('results-handle'),
+    handleLabel: document.getElementById('handle-label'),
     searchForm: document.getElementById('search-form'),
     inputCity: document.getElementById('input-city'),
     btnGps: document.getElementById('btn-gps'),
@@ -258,6 +268,9 @@
     aiBanner: document.getElementById('ai-banner'),
     aiStatusText: document.getElementById('ai-status-text'),
     miniStats: document.getElementById('mini-stats'),
+    statBtnAll: document.getElementById('stat-btn-all'),
+    statBtnNoSite: document.getElementById('stat-btn-no-site'),
+    statBtnPhone: document.getElementById('stat-btn-phone'),
     statTotal: document.getElementById('stat-total'),
     statNoSite: document.getElementById('stat-no-site'),
     statPhone: document.getElementById('stat-phone'),
@@ -272,6 +285,9 @@
     filterText: document.getElementById('filter-text'),
     sortBy: document.getElementById('sort-by'),
     btnExportCsv: document.getElementById('btn-export-csv'),
+    resultsNavCount: document.getElementById('results-nav-count'),
+    btnPrevLead: document.getElementById('btn-prev-lead'),
+    btnNextLead: document.getElementById('btn-next-lead'),
     resultsContainer: document.getElementById('results-container'),
     btnScanViewport: document.getElementById('btn-scan-viewport'),
     layerBtns: document.querySelectorAll('.layer-btn'),
@@ -821,14 +837,18 @@
       el.statPotential.textContent = formatCompactBRL(totalPotential);
       el.miniStats.style.display = 'grid';
       el.sidebarFilters.style.display = 'flex';
+      updateCollapsedSummary();
 
       if (mergedList.length === 0) {
         setBanner('Nenhum comércio encontrado nesse raio. Aumente o raio ou escolha "Todos os Comércios".', false);
+        setResultsExpanded(false);
       } else {
         setBanner(
           `Diagnóstico IA concluído: ${noSiteList.length} de ${mergedList.length} comércios nesta área NÃO têm site próprio.`,
           false
         );
+        // Sobe a lista automaticamente para dar espaço completo aos comércios encontrados
+        setResultsExpanded(true);
       }
 
       renderFilteredResults();
@@ -839,6 +859,71 @@
       state.isScanning = false;
       el.btnScan.disabled = false;
       el.btnScan.textContent = 'Escanear Região no Satélite';
+    }
+  }
+
+  function updateCollapsedSummary() {
+    const cityText = el.inputCity.value.trim() || state.center.name || 'Região atual';
+    const segObj = SEGMENTS[el.selectSegment.value] || SEGMENTS.todos;
+    const kw = el.inputKeyword.value.trim();
+    const radiusVal = (parseFloat(el.inputRadius.value) || state.radiusKm).toFixed(1);
+    el.summaryCity.textContent = `📍 ${cityText}`;
+    el.summaryMeta.textContent = `${kw ? `"${kw}" · ` : ''}${segObj.label} · Raio ${radiusVal} km`;
+  }
+
+  function setResultsExpanded(expanded) {
+    state.resultsExpanded = Boolean(expanded);
+    el.sidebar.classList.toggle('results-expanded', state.resultsExpanded);
+    updateCollapsedSummary();
+    el.handleLabel.textContent = state.resultsExpanded
+      ? '▼ Arraste ou clique para editar a busca'
+      : '▲ Arraste ou clique para subir a lista';
+  }
+
+  function syncStatButtons() {
+    const onlyNoSite = el.filterNoSite.checked;
+    const onlyPhone = el.filterHasPhone.checked;
+    el.statBtnAll.classList.toggle('active-stat', !onlyNoSite && !onlyPhone);
+    el.statBtnNoSite.classList.toggle('active-stat', onlyNoSite && !onlyPhone);
+    el.statBtnPhone.classList.toggle('active-stat', onlyPhone);
+  }
+
+  function updateResultsNavCount() {
+    const total = state.filteredResults.length;
+    if (total === 0) {
+      el.resultsNavCount.textContent = '0 comércios exibidos';
+      el.btnPrevLead.disabled = true;
+      el.btnNextLead.disabled = true;
+      return;
+    }
+    el.btnPrevLead.disabled = false;
+    el.btnNextLead.disabled = false;
+    const idx = state.filteredResults.findIndex((b) => b.id === state.selectedId);
+    if (idx >= 0) {
+      el.resultsNavCount.textContent = `Selecionado ${idx + 1} de ${total}`;
+    } else {
+      el.resultsNavCount.textContent = `${total} ${total === 1 ? 'comércio exibido' : 'comércios exibidos'}`;
+    }
+  }
+
+  function stepLead(delta) {
+    const list = state.filteredResults;
+    if (!list.length) return;
+    let idx = list.findIndex((b) => b.id === state.selectedId);
+    if (idx < 0) {
+      idx = delta > 0 ? 0 : list.length - 1;
+    } else {
+      idx = (idx + delta + list.length) % list.length;
+    }
+    focusBusinessOnSatellite(list[idx].id, true);
+  }
+
+  function setHoveredPin(id, hovered) {
+    const marker = markerMap.get(id);
+    if (!marker) return;
+    const pinEl = marker.getElement()?.querySelector('.radar-pin');
+    if (pinEl) {
+      pinEl.classList.toggle('hovered', hovered);
     }
   }
 
@@ -909,6 +994,7 @@
 
       marker.bindPopup(popupHtml, { maxWidth: 310 });
       marker.on('click', () => {
+        setResultsExpanded(true);
         highlightCard(b.id, true);
       });
       marker.addTo(markersLayer);
@@ -922,26 +1008,34 @@
       const match = card.dataset.bizId === id;
       card.classList.toggle('selected', match);
       if (match && scrollIntoView) {
-        card.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+        card.scrollIntoView({ behavior: 'smooth', block: 'center' });
       }
     });
+    markerMap.forEach((marker, mId) => {
+      const pinEl = marker.getElement()?.querySelector('.radar-pin');
+      if (pinEl) pinEl.classList.toggle('active-pin', mId === id);
+    });
+    updateResultsNavCount();
   }
 
-  function focusBusinessOnSatellite(id) {
+  function focusBusinessOnSatellite(id, scrollCard = false) {
     const biz = findBizById(id);
     if (!biz) return;
     switchView('radar');
-    highlightCard(id, false);
-    map.flyTo([biz.lat, biz.lon], 18, { duration: 0.7 });
+    highlightCard(id, scrollCard);
+    map.flyTo([biz.lat, biz.lon], 18, { duration: 0.65 });
     const marker = markerMap.get(id);
     if (marker) {
-      setTimeout(() => marker.openPopup(), 450);
+      setTimeout(() => marker.openPopup(), 420);
     }
   }
 
   function renderFilteredResults() {
     const list = getFilteredResults();
+    state.filteredResults = list;
+    syncStatButtons();
     renderMapPins(list);
+    updateResultsNavCount();
 
     if (list.length === 0) {
       el.resultsContainer.innerHTML = `
@@ -1413,6 +1507,102 @@
     });
   });
 
+  // Collapsible & Draggable Results Handle ("pontinho" para subir/descer a lista)
+  let dragStartY = null;
+  let dragMoved = false;
+
+  el.resultsHandle.addEventListener('pointerdown', (e) => {
+    dragStartY = e.clientY;
+    dragMoved = false;
+    el.resultsHandle.setPointerCapture?.(e.pointerId);
+  });
+
+  el.resultsHandle.addEventListener('pointermove', (e) => {
+    if (dragStartY === null) return;
+    const dy = e.clientY - dragStartY;
+    if (dy <= -20 && !state.resultsExpanded) {
+      setResultsExpanded(true);
+      dragMoved = true;
+      dragStartY = e.clientY;
+    } else if (dy >= 20 && state.resultsExpanded) {
+      setResultsExpanded(false);
+      dragMoved = true;
+      dragStartY = e.clientY;
+    }
+  });
+
+  const endHandleDrag = () => {
+    dragStartY = null;
+  };
+  el.resultsHandle.addEventListener('pointerup', endHandleDrag);
+  el.resultsHandle.addEventListener('pointercancel', endHandleDrag);
+
+  el.resultsHandle.addEventListener('click', () => {
+    if (dragMoved) {
+      dragMoved = false;
+      return;
+    }
+    setResultsExpanded(!state.resultsExpanded);
+  });
+
+  el.resultsHandle.addEventListener('keydown', (e) => {
+    if (e.key === 'Enter' || e.key === ' ') {
+      e.preventDefault();
+      setResultsExpanded(!state.resultsExpanded);
+    }
+  });
+
+  el.btnCollapseSearch.addEventListener('click', () => setResultsExpanded(true));
+  el.btnExpandSearch.addEventListener('click', () => {
+    setResultsExpanded(false);
+    el.inputCity.focus();
+  });
+  el.btnExpandSearchArea.addEventListener('click', () => {
+    setResultsExpanded(false);
+    el.inputCity.focus();
+  });
+
+  // Clickable Mini-Stats (interact directly with filters)
+  el.statBtnAll.addEventListener('click', () => {
+    el.filterNoSite.checked = false;
+    el.filterHasPhone.checked = false;
+    el.pillNoSite.classList.remove('checked');
+    el.pillHasPhone.classList.remove('checked');
+    renderFilteredResults();
+  });
+
+  el.statBtnNoSite.addEventListener('click', () => {
+    el.filterNoSite.checked = true;
+    el.filterHasPhone.checked = false;
+    el.pillNoSite.classList.add('checked');
+    el.pillHasPhone.classList.remove('checked');
+    renderFilteredResults();
+  });
+
+  el.statBtnPhone.addEventListener('click', () => {
+    el.filterHasPhone.checked = !el.filterHasPhone.checked;
+    el.pillHasPhone.classList.toggle('checked', el.filterHasPhone.checked);
+    renderFilteredResults();
+  });
+
+  // Prospect Stepper (Anterior / Próximo) & Arrow Keys
+  el.btnPrevLead.addEventListener('click', () => stepLead(-1));
+  el.btnNextLead.addEventListener('click', () => stepLead(1));
+
+  document.addEventListener('keydown', (e) => {
+    if (!el.views.radar.classList.contains('active')) return;
+    const tag = document.activeElement?.tagName;
+    if (tag === 'INPUT' || tag === 'TEXTAREA' || tag === 'SELECT') return;
+    if (el.modalPitch.classList.contains('open') || el.modalSite.classList.contains('open')) return;
+    if (e.key === 'ArrowDown') {
+      e.preventDefault();
+      stepLead(1);
+    } else if (e.key === 'ArrowUp') {
+      e.preventDefault();
+      stepLead(-1);
+    }
+  });
+
   // Filters
   [
     [el.filterNoSite, el.pillNoSite],
@@ -1431,7 +1621,24 @@
   el.btnExportCrm.addEventListener('click', () => exportCsv(state.leads, `crm-leads-${Date.now()}.csv`));
   el.crmFilterStage.addEventListener('change', renderCrm);
 
-  // Sidebar Lead Card Clicks & Actions
+  // Sidebar Lead Card Clicks, Actions & Hover-to-Pin Highlight
+  let lastHoveredCardId = null;
+  el.resultsContainer.addEventListener('mouseover', (e) => {
+    const card = e.target.closest('.lead-card');
+    const id = card?.dataset.bizId || null;
+    if (id === lastHoveredCardId) return;
+    if (lastHoveredCardId) setHoveredPin(lastHoveredCardId, false);
+    if (id) setHoveredPin(id, true);
+    lastHoveredCardId = id;
+  });
+
+  el.resultsContainer.addEventListener('mouseleave', () => {
+    if (lastHoveredCardId) {
+      setHoveredPin(lastHoveredCardId, false);
+      lastHoveredCardId = null;
+    }
+  });
+
   el.resultsContainer.addEventListener('click', (e) => {
     const actionBtn = e.target.closest('button[data-action]');
     if (actionBtn) {

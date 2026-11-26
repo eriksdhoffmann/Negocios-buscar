@@ -40,10 +40,22 @@
   <!-- VIEW 1: RADAR SATÉLITE + SIDEBAR IA -->
   <section id="view-radar" class="view-section active" aria-label="Radar de prospecção no mapa">
     <div class="radar-workspace">
-      <aside class="sidebar">
-        <div class="scanner-panel">
+      <aside class="sidebar" id="radar-sidebar">
+        <!-- Barra compacta exibida quando a lista sobe para cima -->
+        <div class="collapsed-search-bar" id="collapsed-search-bar">
+          <div class="collapsed-summary" id="btn-expand-search-area" title="Clique para abrir e editar a busca">
+            <span class="collapsed-city" id="summary-city">Palhoça, SC</span>
+            <span class="collapsed-meta" id="summary-meta">Todos os Comércios · Raio 3.0 km</span>
+          </div>
+          <div class="collapsed-actions">
+            <button type="button" class="btn btn-secondary btn-xs" id="btn-expand-search">Editar busca ▼</button>
+          </div>
+        </div>
+
+        <div class="scanner-panel" id="scanner-panel">
           <div class="scanner-title-row">
             <h1 class="scanner-title">Radar de Comércios sem Site</h1>
+            <button type="button" class="btn btn-ghost btn-xs" id="btn-collapse-search" title="Recolher busca e expandir resultados">Recolher ▲</button>
           </div>
 
           <form class="scanner-form" id="search-form">
@@ -100,24 +112,34 @@
           </div>
         </div>
 
+        <!-- Puxador interativo (arraste para cima/baixo ou clique para subir a lista) -->
+        <div class="results-handle" id="results-handle" role="button" tabindex="0" aria-label="Subir ou descer a lista de comércios encontrados" title="Arraste para cima/baixo ou clique para expandir os resultados">
+          <div class="handle-grip">
+            <span class="handle-dot"></span>
+            <span class="handle-pill"></span>
+            <span class="handle-dot"></span>
+          </div>
+          <span class="handle-label" id="handle-label">▲ Arraste ou clique para subir a lista</span>
+        </div>
+
         <div class="ai-banner" id="ai-banner">
           <span id="ai-status-text">Clique em qualquer ponto do mapa satélite ou digite uma cidade para varrer comércios sem site.</span>
         </div>
 
         <div class="mini-stats" id="mini-stats" style="display: none;">
-          <div class="mini-stat">
+          <button type="button" class="mini-stat clickable" data-stat-filter="all" id="stat-btn-all" title="Mostrar todos os comércios encontrados">
             <div class="mini-stat-label">Varredura</div>
             <div class="mini-stat-val" id="stat-total">0</div>
-          </div>
-          <div class="mini-stat">
+          </button>
+          <button type="button" class="mini-stat clickable active-stat" data-stat-filter="no-site" id="stat-btn-no-site" title="Filtrar somente comércios sem site">
             <div class="mini-stat-label">Sem Site</div>
             <div class="mini-stat-val accent" id="stat-no-site">0</div>
-          </div>
-          <div class="mini-stat">
+          </button>
+          <button type="button" class="mini-stat clickable" data-stat-filter="phone" id="stat-btn-phone" title="Filtrar comércios com telefone">
             <div class="mini-stat-label">c/ Fone</div>
             <div class="mini-stat-val" id="stat-phone">0</div>
-          </div>
-          <div class="mini-stat">
+          </button>
+          <div class="mini-stat" title="Potencial financeiro estimado dos comércios sem site">
             <div class="mini-stat-label">Potencial</div>
             <div class="mini-stat-val accent" id="stat-potential">R$ 0</div>
           </div>
@@ -147,6 +169,14 @@
               <option value="name">A-Z</option>
             </select>
             <button type="button" class="btn btn-secondary btn-sm" id="btn-export-csv" title="Exportar lista em CSV">CSV</button>
+          </div>
+
+          <div class="results-nav-bar">
+            <span class="results-nav-count" id="results-nav-count">0 comércios exibidos</span>
+            <div class="results-nav-btns">
+              <button type="button" class="btn btn-secondary btn-xs" id="btn-prev-lead" title="Ir para o comércio anterior no mapa">◀ Anterior</button>
+              <button type="button" class="btn btn-secondary btn-xs" id="btn-next-lead" title="Ir para o próximo comércio no mapa">Próximo ▶</button>
+            </div>
           </div>
         </div>
 
